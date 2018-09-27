@@ -86,11 +86,16 @@ class LibraryMediaManager {
                                             return
                                             
                 }
+
+                var hasAudio = false
+                
                 if let audioTrack = asset.tracks(withMediaType: AVMediaType.audio).first,
                     let audioCompositionTrack = assetComposition
                         .addMutableTrack(withMediaType: AVMediaType.audio,
                                          preferredTrackID: kCMPersistentTrackID_Invalid) {
                     try audioCompositionTrack.insertTimeRange(trackTimeRange, of: audioTrack, at: kCMTimeZero)
+
+                    hasAudio = true
                 }
                 
                 try videoCompositionTrack.insertTimeRange(trackTimeRange, of: videoTrack, at: kCMTimeZero)
@@ -134,17 +139,188 @@ class LibraryMediaManager {
                 }
                 
                 self.currentExportSessions.append(exportSession!)
-                exportSession?.exportAsynchronously(completionHandler: {
-                    DispatchQueue.main.async {
-                        if let url = exportSession?.outputURL, exportSession?.status == .completed {
+                exportSession?.exportAsynchronously(completionHandler: { [weak self] in
+                    guard let strongSelf = self, hasAudio else {
+                        //TODO: error message
+                        return
+                    }
+
+                    if let url = exportSession?.outputURL, exportSession?.status == .completed {
+                        DispatchQueue.main.async {
                             callback(url)
-                            if let index = self.currentExportSessions.index(of:exportSession!) {
-                                self.currentExportSessions.remove(at: index)
+                            if let index = strongSelf.currentExportSessions.index(of:exportSession!) {
+                                strongSelf.currentExportSessions.remove(at: index)
                             }
-                        } else {
-                            let error = exportSession?.error
-                            print("error exporting video \(String(describing: error))")
                         }
+                    } else {
+                        let error = exportSession?.error
+                        print("error exporting video \(String(describing: error))")
+
+                        /*
+                         * CUSTOM FIX BELOW!!!
+                         */
+                        
+                        strongSelf.clearTickExportTimer()
+                        
+                        print("Running export fix!")
+                        
+                        strongSelf.fetchVideoUrlAndCropFix(for: videoAsset, cropRect: cropRect, callback: callback)
+                    }
+                })
+            } catch let error {
+                print("⚠️ PHCachingImageManager >>> \(error)")
+            }
+        }
+    }
+
+    func fetchVideoUrlAndCropFix(for videoAsset: PHAsset, cropRect: CGRect, callback: @escaping (URL) -> Void) {
+        let videosOptions = PHVideoRequestOptions()
+        videosOptions.isNetworkAccessAllowed = true
+        imageManager?.requestAVAsset(forVideo: videoAsset, options: videosOptions) { asset, _, _ in
+            do {
+                guard let asset = asset else { print("⚠️ PHCachingImageManager >>> Don't have the asset"); return }
+                
+                let assetComposition = AVMutableComposition()
+                
+                guard let audioTrack = asset.tracks(withMediaType: AVMediaType.audio).first,
+                    let audioCompositionTrack = assetComposition
+                        .addMutableTrack(withMediaType: AVMediaType.audio,
+                                         preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                                            print("⚠️ PHCachingImageManager >>> Problems with audio track")
+                                            return
+                }
+                
+                let audioTimeRange = CMTimeRangeMake(kCMTimeZero, audioTrack.timeRange.duration)
+                
+                try audioCompositionTrack.insertTimeRange(audioTimeRange, of: audioTrack, at: kCMTimeZero)
+                
+                let exportSession = AVAssetExportSession(asset: asset,
+                                                         presetName: AVAssetExportPresetAppleM4A)
+                
+                let fileType: AVFileType = .m4a
+                exportSession?.outputFileType = fileType
+                exportSession?.shouldOptimizeForNetworkUse = true
+                exportSession?.outputURL = URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingUniquePathComponent(pathExtension: fileType.fileExtension)
+                
+                // 6. Exporting
+                self.currentExportSessions.append(exportSession!)
+                exportSession?.exportAsynchronously(completionHandler: { [weak self] in
+                    guard let strongSelf = self else {
+                        return
+                    }
+                    
+                    if let url = exportSession?.outputURL, exportSession?.status == .completed {
+                        if let index = strongSelf.currentExportSessions.index(of:exportSession!) {
+                            strongSelf.currentExportSessions.remove(at: index)
+                        }
+                        
+                        //print("audio created: \(url)")
+                        strongSelf.fetchVideoUrlAndCropFixFinalize(for: videoAsset, audioAsset: AVAsset(url: url), cropRect: cropRect, callback: callback)
+                    } else {
+                        let error = exportSession?.error
+                        print("error creating audio \(String(describing: error))")
+                    }
+                })
+            } catch let error {
+                print("⚠️ PHCachingImageManager >>> \(error)")
+            }
+        }
+
+    }
+    
+    func fetchVideoUrlAndCropFixFinalize(for videoAsset: PHAsset, audioAsset: AVAsset, cropRect: CGRect, callback: @escaping (URL) -> Void) {
+        let videosOptions = PHVideoRequestOptions()
+        videosOptions.isNetworkAccessAllowed = true
+        imageManager?.requestAVAsset(forVideo: videoAsset, options: videosOptions) { asset, _, _ in
+            do {
+                guard let asset = asset else { print("⚠️ PHCachingImageManager >>> Don't have the asset"); return }
+                
+                let assetComposition = AVMutableComposition()
+                
+                // 1. Inserting audio and video tracks in composition
+                
+                guard let videoTrack = asset.tracks(withMediaType: AVMediaType.video).first,
+                    let videoCompositionTrack = assetComposition
+                        .addMutableTrack(withMediaType: .video,
+                                         preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                                            print("⚠️ PHCachingImageManager >>> Problems with video track")
+                                            return
+                }
+                
+                guard let audioTrack = audioAsset.tracks(withMediaType: AVMediaType.audio).first,
+                    let audioCompositionTrack = assetComposition
+                        .addMutableTrack(withMediaType: AVMediaType.audio,
+                                         preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                                            print("⚠️ PHCachingImageManager >>> Problems with audio track")
+                                            return
+                }
+                
+                let trackTimeRange = CMTimeRangeMake(kCMTimeZero, asset.duration)
+                let videoTimeRange = CMTimeRangeMake(kCMTimeZero, videoTrack.timeRange.duration)
+                let audioTimeRange = CMTimeRangeMake(kCMTimeZero, audioTrack.timeRange.duration)
+                
+                try audioCompositionTrack.insertTimeRange(audioTimeRange, of: audioTrack, at: kCMTimeZero)
+                try videoCompositionTrack.insertTimeRange(videoTimeRange, of: videoTrack, at: kCMTimeZero)
+                
+                // 2. Create the instructions
+                let mainInstructions = AVMutableVideoCompositionInstruction()
+                mainInstructions.timeRange = trackTimeRange
+                
+                // 3. Adding the layer instructions. Transforming
+                
+                let layerInstructions = AVMutableVideoCompositionLayerInstruction(assetTrack: videoCompositionTrack)
+                layerInstructions.setTransform(videoTrack.getTransform(cropRect: cropRect), at: kCMTimeZero)
+                layerInstructions.setOpacity(1.0, at: kCMTimeZero)
+                mainInstructions.layerInstructions = [layerInstructions]
+                
+                // 4. Create the main composition and add the instructions
+                
+                let videoComposition = AVMutableVideoComposition()
+                videoComposition.renderSize = cropRect.size
+                videoComposition.instructions = [mainInstructions]
+                videoComposition.frameDuration = CMTimeMake(1, 30)
+                
+                // 5. Configuring export session
+                
+                let exportSession = AVAssetExportSession(asset: assetComposition,
+                                                         presetName: YPConfig.video.compression)
+                
+                exportSession?.outputFileType = YPConfig.video.fileType
+                exportSession?.shouldOptimizeForNetworkUse = true
+                exportSession?.videoComposition = videoComposition
+                exportSession?.outputURL = URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingUniquePathComponent(pathExtension: YPConfig.video.fileType.fileExtension)
+                
+                // 6. Exporting
+                
+                DispatchQueue.main.async {
+                    self.exportTimer = Timer.scheduledTimer(timeInterval: 0.1,
+                                                            target: self,
+                                                            selector: #selector(self.onTickExportTimer),
+                                                            userInfo: exportSession,
+                                                            repeats: true)
+                }
+
+                self.currentExportSessions.append(exportSession!)
+                exportSession?.exportAsynchronously(completionHandler: { [weak self] in
+                    guard let strongSelf = self else {
+                        return
+                    }
+                    
+                    if let url = exportSession?.outputURL, exportSession?.status == .completed {
+                        DispatchQueue.main.async {
+                            callback(url)
+                            
+                            if let index = strongSelf.currentExportSessions.index(of:exportSession!) {
+                                strongSelf.currentExportSessions.remove(at: index)
+                            }
+                        }
+                    } else {
+                        let error = exportSession?.error
+                        print("error exporting video \(String(describing: error))")
+                                                
+                        strongSelf.clearTickExportTimer()
                     }
                 })
             } catch let error {
@@ -168,6 +344,17 @@ class LibraryMediaManager {
             }
         }
     }
+
+    func clearTickExportTimer() {
+        DispatchQueue.main.async {
+            guard let timer = self.exportTimer else {
+                return
+            }
+        
+            timer.invalidate()
+            self.exportTimer = nil
+        }
+    }    
     
     func forseCancelExporting() {
         for s in self.currentExportSessions {
