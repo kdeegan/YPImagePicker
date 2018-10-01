@@ -20,7 +20,19 @@ extension PHCachingImageManager {
         return options
     }
     
-    func fetchImage(for asset: PHAsset, cropRect: CGRect, targetSize: CGSize, callback: @escaping (UIImage, [String: Any]) -> Void) {
+    func fetchImageGif(for asset: PHAsset, callback: @escaping (UIImage, [String: Any], Data?) -> Void) {
+        let options = photoImageRequestOptions()
+    
+        // Fetch Highiest quality image possible.
+        requestImageData(for: asset, options: options) { dataOrig, dataUTI, CTFontOrientation, info in
+            if let data = dataOrig, let image = UIImage.gif(data: data) {
+                let exifs = self.metadataForImageData(data: data)
+                callback(image, exifs, dataOrig)
+            }
+        }
+    }
+
+    func fetchImage(for asset: PHAsset, cropRect: CGRect, targetSize: CGSize, callback: @escaping (UIImage, [String: Any], Data?) -> Void) {
         let options = photoImageRequestOptions()
     
         // Fetch Highiest quality image possible.
@@ -37,7 +49,7 @@ extension PHCachingImageManager {
                 if let imageRef = image.cgImage?.cropping(to: scaledCropRect) {
                     let croppedImage = UIImage(cgImage: imageRef)
                     let exifs = self.metadataForImageData(data: data)
-                    callback(croppedImage, exifs)
+                    callback(croppedImage, exifs, nil)
                 }
             }
         }

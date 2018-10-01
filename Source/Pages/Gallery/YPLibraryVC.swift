@@ -8,6 +8,7 @@
 
 import UIKit
 import Photos
+import MobileCoreServices
 
 public class YPLibraryVC: UIViewController, YPPermissionCheckable {
     
@@ -362,7 +363,14 @@ public class YPLibraryVC: UIViewController, YPPermissionCheckable {
     
     private func fetchImageAndCrop(for asset: PHAsset,
                                    withCropRect: CGRect? = nil,
-                                   callback: @escaping (_ photo: UIImage, _ exif: [String : Any]) -> Void) {
+                                   callback: @escaping (_ photo: UIImage, _ exif: [String : Any], _ data: Data?) -> Void) {
+        print("FETCH AND CROP \(asset)")
+        if asset.isGif() == true {
+            print("IS GIF!")
+            mediaManager.imageManager?.fetchImageGif(for: asset, callback: callback)
+            return
+        }
+        
         delegate?.libraryViewStartedLoading()
         let cropRect = withCropRect ?? DispatchQueue.main.sync { v.currentCropRect() }
         let ts = targetSize(for: asset, cropRect: cropRect)
@@ -413,8 +421,8 @@ public class YPLibraryVC: UIViewController, YPPermissionCheckable {
                     
                     switch asset.asset.mediaType {
                     case .image:
-                        self.fetchImageAndCrop(for: asset.asset, withCropRect: asset.cropRect) { image, exifMeta in
-                            let photo = YPMediaPhoto(image: image.resizedImageIfNeeded(), exifMeta: exifMeta, asset: asset.asset)
+                        self.fetchImageAndCrop(for: asset.asset, withCropRect: asset.cropRect) { image, exifMeta, data in
+                            let photo = YPMediaPhoto(image: image.resizedImageIfNeeded(), exifMeta: exifMeta, asset: asset.asset, data: data)
                             resultMediaItems.append(YPMediaItem.photo(p: photo))
                             asyncGroup.leave()
                         }
@@ -448,12 +456,13 @@ public class YPLibraryVC: UIViewController, YPPermissionCheckable {
                         }
                     })
                 case .image:
-                    self.fetchImageAndCrop(for: asset) { image, exifMeta in
+                    self.fetchImageAndCrop(for: asset) { image, exifMeta, data in
                         DispatchQueue.main.async {
                             self.delegate?.libraryViewFinishedLoading()
                             let photo = YPMediaPhoto(image: image.resizedImageIfNeeded(),
                                                      exifMeta: exifMeta,
-                                                     asset: asset)
+                                                     asset: asset,
+                                                     data: data)
                             photoCallback(photo)
                         }
                     }
