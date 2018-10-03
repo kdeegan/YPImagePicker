@@ -104,36 +104,55 @@ final class YPAssetZoomableView: UIScrollView {
         guard currentAsset != photo else { DispatchQueue.main.async { completion() }; return }
         currentAsset = photo
         
-        mediaManager.imageManager?.fetch(photo: photo) { [weak self] image, _ in
-            guard let strongSelf = self else { return }
-            
-            if strongSelf.photoImageView.isDescendant(of: strongSelf) == false {
-                strongSelf.isVideoMode = false
-                strongSelf.videoView.removeFromSuperview()
-                strongSelf.videoView.showPlayImage(show: false)
-                strongSelf.videoView.deallocate()
-                strongSelf.addSubview(strongSelf.photoImageView)
-            
-                strongSelf.photoImageView.contentMode = .scaleAspectFill
-                strongSelf.photoImageView.clipsToBounds = true
+        if photo.isGif() {
+            mediaManager.imageManager?.fetchImageGif(for: photo) { [weak self] _, _, data in
+                guard let strongSelf = self, let data = data else { return }
+                
+                guard let image = UIImage.gif(data: data) else {
+                    return
+                }
+                
+                DispatchQueue.main.async {
+                    strongSelf.setImageCompletion(image, storedCropPosition, completion)
+                }
             }
-            
-            strongSelf.photoImageView.image = image
-           
-            strongSelf.setAssetFrame(for: strongSelf.photoImageView, with: image)
-            
-            // Fit image if only squared
-            if YPConfig.library.onlySquare {
-                strongSelf.fitImage(true)
-            }
-            
-            // Stored crop position in multiple selection
-            if let scp173 = storedCropPosition {
-                strongSelf.applyStoredCropPosition(scp173)
-            }
-            
-            completion()
         }
+        else {
+            mediaManager.imageManager?.fetch(photo: photo) { [weak self] image, _ in
+                guard let strongSelf = self else { return }
+            
+                strongSelf.setImageCompletion(image, storedCropPosition, completion)
+            }
+        }
+    }
+    
+    fileprivate func setImageCompletion(_ image: UIImage, _ storedCropPosition: YPLibrarySelection?, _ completion: @escaping () -> Void) {
+        if photoImageView.isDescendant(of: self) == false {
+            isVideoMode = false
+            videoView.removeFromSuperview()
+            videoView.showPlayImage(show: false)
+            videoView.deallocate()
+            addSubview(photoImageView)
+            
+            photoImageView.contentMode = .scaleAspectFill
+            photoImageView.clipsToBounds = true
+        }
+        
+        photoImageView.image = image
+        
+        setAssetFrame(for: photoImageView, with: image)
+        
+        // Fit image if only squared
+        if YPConfig.library.onlySquare {
+            fitImage(true)
+        }
+        
+        // Stored crop position in multiple selection
+        if let scp173 = storedCropPosition {
+            applyStoredCropPosition(scp173)
+        }
+        
+        completion()
     }
     
     fileprivate func setAssetFrame(`for` view: UIView, with image: UIImage) {

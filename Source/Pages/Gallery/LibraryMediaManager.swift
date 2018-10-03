@@ -140,7 +140,7 @@ class LibraryMediaManager {
                 
                 self.currentExportSessions.append(exportSession!)
                 exportSession?.exportAsynchronously(completionHandler: { [weak self] in
-                    guard let strongSelf = self, hasAudio else {
+                    guard let strongSelf = self else {
                         //TODO: error message
                         return
                     }
@@ -155,10 +155,14 @@ class LibraryMediaManager {
                     } else {
                         let error = exportSession?.error
                         print("error exporting video \(String(describing: error))")
-
+                        
                         /*
                          * CUSTOM FIX BELOW!!!
                          */
+                        
+                        guard hasAudio else {
+                            return
+                        }
                         
                         strongSelf.clearTickExportTimer()
                         
