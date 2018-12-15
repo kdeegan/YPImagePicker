@@ -52,7 +52,6 @@ class YPVideoProcessor {
      Crops the video to square by video height from the top of the video.
      */
     static func cropToSquare(filePath: URL, completion: @escaping (_ outputURL : URL?) -> ()) {
-        
         // output file
         let outputPath = makeVideoPathURL(temporaryFolder: true, fileName: "squaredVideoFromCamera")
         
@@ -63,6 +62,7 @@ class YPVideoProcessor {
         
         // input clip
         guard let clipVideoTrack = asset.tracks(withMediaType: .video).first else {
+            print("cropToSquare: MISSING FIRST INDEX!")
             completion(nil)
             return
         }
