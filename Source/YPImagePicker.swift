@@ -86,6 +86,7 @@ public class YPImagePicker: UINavigationController {
 
         picker.didSelectItems = { [weak self] items in
             let showsFilters = YPConfig.showsFilters
+            let showsTrimmer = YPConfig.showsTrimmer
             
             // Use Fade transition instead of default push animation
             let transition = CATransition()
@@ -137,7 +138,7 @@ public class YPImagePicker: UINavigationController {
                     }
                 }
                 
-                if showsFilters {
+                if showsFilters && (photo.asset == nil || !photo.asset!.isGif()) {
                     let filterVC = YPPhotoFiltersVC(inputPhoto: photo,
                                                     isFromSelectionVC: false)
                     // Show filters and then crop
@@ -151,7 +152,7 @@ public class YPImagePicker: UINavigationController {
                     showCropVC(photo: photo, completion: completion)
                 }
             case .video(let video):
-                if showsFilters {
+                if showsTrimmer {
                     let videoFiltersVC = YPVideoFiltersVC.initWith(video: video,
                                                                    isFromSelectionVC: false)
                     videoFiltersVC.didSave = { [weak self] outputMedia in

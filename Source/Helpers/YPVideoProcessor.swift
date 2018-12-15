@@ -62,7 +62,10 @@ class YPVideoProcessor {
         composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         
         // input clip
-        let clipVideoTrack = asset.tracks(withMediaType: .video)[0]
+        guard let clipVideoTrack = asset.tracks(withMediaType: .video).first else {
+            completion(nil)
+            return
+        }
         
         // make it square
         let videoComposition = AVMutableVideoComposition()
