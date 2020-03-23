@@ -60,7 +60,8 @@ final class YPAssetZoomableView: UIScrollView {
     public func setVideo(_ video: PHAsset,
                          mediaManager: LibraryMediaManager,
                          storedCropPosition: YPLibrarySelection?,
-                         completion: @escaping () -> Void) {
+                         completion: @escaping () -> Void,
+                         updateCropInfo: @escaping () -> Void) {
         mediaManager.imageManager?.fetchPreviewFor(video: video) { [weak self] preview in
             guard let strongSelf = self else { return }
             guard strongSelf.currentAsset != video else { completion() ; return }
@@ -74,18 +75,15 @@ final class YPAssetZoomableView: UIScrollView {
             strongSelf.videoView.setPreviewImage(preview)
             
             strongSelf.setAssetFrame(for: strongSelf.videoView, with: preview)
-
-            // Fit video view if only squared
-            if YPConfig.library.onlySquare {
-                strongSelf.fitImage(true)
-            }
+            
+            completion()
             
             // Stored crop position in multiple selection
             if let scp173 = storedCropPosition {
                 strongSelf.applyStoredCropPosition(scp173)
+                //MARK: add update CropInfo after multiple
+                updateCropInfo()
             }
-            
-            completion()
         }
         mediaManager.imageManager?.fetchPlayerItem(for: video) { [weak self] playerItem in
             guard let strongSelf = self else { return }
@@ -100,8 +98,12 @@ final class YPAssetZoomableView: UIScrollView {
     public func setImage(_ photo: PHAsset,
                          mediaManager: LibraryMediaManager,
                          storedCropPosition: YPLibrarySelection?,
-                         completion: @escaping () -> Void) {
-        guard currentAsset != photo else { DispatchQueue.main.async { completion() }; return }
+                         completion: @escaping (Bool) -> Void,
+                         updateCropInfo: @escaping () -> Void) {
+        guard currentAsset != photo else {
+            DispatchQueue.main.async { completion(false) }
+            return
+        }
         currentAsset = photo
         
         if photo.isGif() {
@@ -125,7 +127,7 @@ final class YPAssetZoomableView: UIScrollView {
             }
         }
     }
-    
+
     fileprivate func setImageCompletion(_ image: UIImage, _ storedCropPosition: YPLibrarySelection?, _ completion: @escaping () -> Void) {
         if photoImageView.isDescendant(of: self) == false {
             isVideoMode = false
@@ -142,17 +144,14 @@ final class YPAssetZoomableView: UIScrollView {
         
         setAssetFrame(for: photoImageView, with: image)
         
-        // Fit image if only squared
-        if YPConfig.library.onlySquare {
-            fitImage(true)
-        }
-        
         // Stored crop position in multiple selection
         if let scp173 = storedCropPosition {
             applyStoredCropPosition(scp173)
+            //MARK: add update CropInfo after multiple
+            updateCropInfo()
         }
-        
-        completion()
+
+        completion(isLowResIntermediaryImage)
     }
     
     fileprivate func setAssetFrame(`for` view: UIView, with image: UIImage) {
@@ -231,14 +230,15 @@ final class YPAssetZoomableView: UIScrollView {
     
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)!
-        frame.size      = CGSize.zero
-        clipsToBounds   = true
+        backgroundColor = YPConfig.colors.assetViewBackgroundColor
+        frame.size = CGSize.zero
+        clipsToBounds = true
         photoImageView.frame = CGRect(origin: CGPoint.zero, size: CGSize.zero)
         videoView.frame = CGRect(origin: CGPoint.zero, size: CGSize.zero)
         maximumZoomScale = 6.0
         minimumZoomScale = 1
         showsHorizontalScrollIndicator = false
-        showsVerticalScrollIndicator   = false
+        showsVerticalScrollIndicator = false
         delegate = self
         alwaysBounceHorizontal = true
         alwaysBounceVertical = true

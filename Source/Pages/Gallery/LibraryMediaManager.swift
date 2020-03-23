@@ -16,7 +16,6 @@ class LibraryMediaManager {
     internal var fetchResult: PHFetchResult<PHAsset>!
     internal var previousPreheatRect: CGRect = .zero
     internal var imageManager: PHCachingImageManager?
-    internal var selectedAsset: PHAsset!
     internal var exportTimer: Timer?
     internal var currentExportSessions: [AVAssetExportSession] = []
     
@@ -69,6 +68,7 @@ class LibraryMediaManager {
     func fetchVideoUrlAndCrop(for videoAsset: PHAsset, cropRect: CGRect, callback: @escaping (URL) -> Void) {
         let videosOptions = PHVideoRequestOptions()
         videosOptions.isNetworkAccessAllowed = true
+        videosOptions.deliveryMode = .highQualityFormat
         imageManager?.requestAVAsset(forVideo: videoAsset, options: videosOptions) { asset, _, _ in
             do {
                 guard let asset = asset else { print("⚠️ PHCachingImageManager >>> Don't have the asset"); return }
@@ -100,24 +100,22 @@ class LibraryMediaManager {
                 
                 try videoCompositionTrack.insertTimeRange(trackTimeRange, of: videoTrack, at: CMTime.zero)
                 
-                // 2. Create the instructions
+                // Layer Instructions
+                let layerInstructions = AVMutableVideoCompositionLayerInstruction(assetTrack: videoCompositionTrack)
+                var transform = videoTrack.preferredTransform
+                transform.tx -= cropRect.minX
+                transform.ty -= cropRect.minY
+                layerInstructions.setTransform(transform, at: CMTime.zero)
                 
+                // CompositionInstruction
                 let mainInstructions = AVMutableVideoCompositionInstruction()
                 mainInstructions.timeRange = trackTimeRange
-                
-                // 3. Adding the layer instructions. Transforming
-                
-                let layerInstructions = AVMutableVideoCompositionLayerInstruction(assetTrack: videoCompositionTrack)
-                layerInstructions.setTransform(videoTrack.getTransform(cropRect: cropRect), at: CMTime.zero)
-                layerInstructions.setOpacity(1.0, at: CMTime.zero)
                 mainInstructions.layerInstructions = [layerInstructions]
                 
-                // 4. Create the main composition and add the instructions
-                
-                let videoComposition = AVMutableVideoComposition()
-                videoComposition.renderSize = cropRect.size
+                // Video Composition
+                let videoComposition = AVMutableVideoComposition(propertiesOf: asset)
                 videoComposition.instructions = [mainInstructions]
-                videoComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
+                videoComposition.renderSize = cropRect.size // needed? 
                 
                 // 5. Configuring export session
                 
@@ -139,17 +137,12 @@ class LibraryMediaManager {
                 }
                 
                 self.currentExportSessions.append(exportSession!)
-                exportSession?.exportAsynchronously(completionHandler: { [weak self] in
-                    guard let strongSelf = self else {
-                        //TODO: error message
-                        return
-                    }
-
+                exportSession?.exportAsynchronously(completionHandler: {
                     if let url = exportSession?.outputURL, exportSession?.status == .completed {
                         DispatchQueue.main.async {
                             callback(url)
-                            if let index = strongSelf.currentExportSessions.index(of:exportSession!) {
-                                strongSelf.currentExportSessions.remove(at: index)
+                            if let index = self.currentExportSessions.index(of:exportSession!) {
+                                self.currentExportSessions.remove(at: index)
                             }
                         }
                     } else {
@@ -164,11 +157,11 @@ class LibraryMediaManager {
                             return
                         }
                         
-                        strongSelf.clearTickExportTimer()
+                        self.clearTickExportTimer()
                         
                         print("Running export fix!")
                         
-                        strongSelf.fetchVideoUrlAndCropFix(for: videoAsset, cropRect: cropRect, callback: callback)
+                        self.fetchVideoUrlAndCropFix(for: videoAsset, cropRect: cropRect, callback: callback)
                     }
                 })
             } catch let error {
@@ -209,18 +202,14 @@ class LibraryMediaManager {
                 
                 // 6. Exporting
                 self.currentExportSessions.append(exportSession!)
-                exportSession?.exportAsynchronously(completionHandler: { [weak self] in
-                    guard let strongSelf = self else {
-                        return
-                    }
-                    
+                exportSession?.exportAsynchronously(completionHandler: {
                     if let url = exportSession?.outputURL, exportSession?.status == .completed {
-                        if let index = strongSelf.currentExportSessions.index(of:exportSession!) {
-                            strongSelf.currentExportSessions.remove(at: index)
+                        if let index = self.currentExportSessions.index(of:exportSession!) {
+                            self.currentExportSessions.remove(at: index)
                         }
                         
                         //print("audio created: \(url)")
-                        strongSelf.fetchVideoUrlAndCropFixFinalize(for: videoAsset, audioAsset: AVAsset(url: url), cropRect: cropRect, callback: callback)
+                        self.fetchVideoUrlAndCropFixFinalize(for: videoAsset, audioAsset: AVAsset(url: url), cropRect: cropRect, callback: callback)
                     } else {
                         let error = exportSession?.error
                         print("error creating audio \(String(describing: error))")
@@ -307,24 +296,19 @@ class LibraryMediaManager {
                 }
 
                 self.currentExportSessions.append(exportSession!)
-                exportSession?.exportAsynchronously(completionHandler: { [weak self] in
-                    guard let strongSelf = self else {
-                        return
-                    }
-                    
+                exportSession?.exportAsynchronously(completionHandler: {
                     if let url = exportSession?.outputURL, exportSession?.status == .completed {
                         DispatchQueue.main.async {
                             callback(url)
-                            
-                            if let index = strongSelf.currentExportSessions.index(of:exportSession!) {
-                                strongSelf.currentExportSessions.remove(at: index)
+                            if let index = self.currentExportSessions.firstIndex(of:exportSession!) {
+                                self.currentExportSessions.remove(at: index)
                             }
                         }
                     } else {
                         let error = exportSession?.error
                         print("error exporting video \(String(describing: error))")
                                                 
-                        strongSelf.clearTickExportTimer()
+                        self.clearTickExportTimer()
                     }
                 })
             } catch let error {
@@ -366,4 +350,3 @@ class LibraryMediaManager {
         }
     }
 }
-
