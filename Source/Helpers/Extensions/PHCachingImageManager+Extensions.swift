@@ -50,7 +50,7 @@ extension PHCachingImageManager {
                     let croppedImage = UIImage(cgImage: imageRef)
                     let exifs = self.metadataForImageData(data: data)
                     print("YPImagePicker - fetchImage, return JPEGRepresentation")
-                    callback(croppedImage, exifs, UIImageJPEGRepresentation(croppedImage, 1.0))
+                    callback(croppedImage, exifs, croppedImage.jpegData(compressionQuality: 1.0))
                 }
             }
         }

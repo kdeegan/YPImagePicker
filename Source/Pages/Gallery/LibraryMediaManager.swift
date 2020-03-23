@@ -141,7 +141,7 @@ class LibraryMediaManager {
                     if let url = exportSession?.outputURL, exportSession?.status == .completed {
                         DispatchQueue.main.async {
                             callback(url)
-                            if let index = self.currentExportSessions.index(of:exportSession!) {
+                            if let index = self.currentExportSessions.firstIndex(of:exportSession!) {
                                 self.currentExportSessions.remove(at: index)
                             }
                         }
@@ -187,9 +187,9 @@ class LibraryMediaManager {
                                             return
                 }
                 
-                let audioTimeRange = CMTimeRangeMake(kCMTimeZero, audioTrack.timeRange.duration)
+                let audioTimeRange = CMTimeRangeMake(start: CMTime.zero, duration: audioTrack.timeRange.duration)
                 
-                try audioCompositionTrack.insertTimeRange(audioTimeRange, of: audioTrack, at: kCMTimeZero)
+                try audioCompositionTrack.insertTimeRange(audioTimeRange, of: audioTrack, at: CMTime.zero)
                 
                 let exportSession = AVAssetExportSession(asset: asset,
                                                          presetName: AVAssetExportPresetAppleM4A)
@@ -204,7 +204,7 @@ class LibraryMediaManager {
                 self.currentExportSessions.append(exportSession!)
                 exportSession?.exportAsynchronously(completionHandler: {
                     if let url = exportSession?.outputURL, exportSession?.status == .completed {
-                        if let index = self.currentExportSessions.index(of:exportSession!) {
+                        if let index = self.currentExportSessions.firstIndex(of:exportSession!) {
                             self.currentExportSessions.remove(at: index)
                         }
                         
@@ -249,12 +249,12 @@ class LibraryMediaManager {
                                             return
                 }
                 
-                let trackTimeRange = CMTimeRangeMake(kCMTimeZero, asset.duration)
-                let videoTimeRange = CMTimeRangeMake(kCMTimeZero, videoTrack.timeRange.duration)
-                let audioTimeRange = CMTimeRangeMake(kCMTimeZero, audioTrack.timeRange.duration)
+                let trackTimeRange = CMTimeRangeMake(start: CMTime.zero, duration: asset.duration)
+                let videoTimeRange = CMTimeRangeMake(start: CMTime.zero, duration: videoTrack.timeRange.duration)
+                let audioTimeRange = CMTimeRangeMake(start: CMTime.zero, duration: audioTrack.timeRange.duration)
                 
-                try audioCompositionTrack.insertTimeRange(audioTimeRange, of: audioTrack, at: kCMTimeZero)
-                try videoCompositionTrack.insertTimeRange(videoTimeRange, of: videoTrack, at: kCMTimeZero)
+                try audioCompositionTrack.insertTimeRange(audioTimeRange, of: audioTrack, at: CMTime.zero)
+                try videoCompositionTrack.insertTimeRange(videoTimeRange, of: videoTrack, at: CMTime.zero)
                 
                 // 2. Create the instructions
                 let mainInstructions = AVMutableVideoCompositionInstruction()
@@ -263,16 +263,17 @@ class LibraryMediaManager {
                 // 3. Adding the layer instructions. Transforming
                 
                 let layerInstructions = AVMutableVideoCompositionLayerInstruction(assetTrack: videoCompositionTrack)
-                layerInstructions.setTransform(videoTrack.getTransform(cropRect: cropRect), at: kCMTimeZero)
-                layerInstructions.setOpacity(1.0, at: kCMTimeZero)
-                mainInstructions.layerInstructions = [layerInstructions]
+                var transform = videoTrack.preferredTransform
+                transform.tx -= cropRect.minX
+                transform.ty -= cropRect.minY
+                layerInstructions.setTransform(transform, at: CMTime.zero)
                 
                 // 4. Create the main composition and add the instructions
                 
                 let videoComposition = AVMutableVideoComposition()
                 videoComposition.renderSize = cropRect.size
                 videoComposition.instructions = [mainInstructions]
-                videoComposition.frameDuration = CMTimeMake(1, 30)
+                videoComposition.frameDuration = CMTimeMake(value: 1, timescale: 30)
                 
                 // 5. Configuring export session
                 

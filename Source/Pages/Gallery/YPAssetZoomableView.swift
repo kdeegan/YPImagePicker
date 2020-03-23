@@ -115,20 +115,24 @@ final class YPAssetZoomableView: UIScrollView {
                 }
                 
                 DispatchQueue.main.async {
-                    strongSelf.setImageCompletion(image, storedCropPosition, completion)
+                    strongSelf.setImageCompletion(image, storedCropPosition, completion, updateCropInfo, false)
                 }
             }
         }
         else {
-            mediaManager.imageManager?.fetch(photo: photo) { [weak self] image, _ in
+            mediaManager.imageManager?.fetch(photo: photo) { [weak self] image, isLowResIntermediaryImage in
                 guard let strongSelf = self else { return }
             
-                strongSelf.setImageCompletion(image, storedCropPosition, completion)
+                strongSelf.setImageCompletion(image, storedCropPosition, completion, updateCropInfo, isLowResIntermediaryImage)
             }
         }
     }
 
-    fileprivate func setImageCompletion(_ image: UIImage, _ storedCropPosition: YPLibrarySelection?, _ completion: @escaping () -> Void) {
+    fileprivate func setImageCompletion(_ image: UIImage,
+                                        _ storedCropPosition: YPLibrarySelection?,
+                                        _ completion: @escaping (Bool) -> Void,
+                                        _ updateCropInfo: @escaping () -> Void,
+                                        _ isLowResIntermediaryImage: Bool) {
         if photoImageView.isDescendant(of: self) == false {
             isVideoMode = false
             videoView.removeFromSuperview()

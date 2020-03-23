@@ -23,7 +23,6 @@ public class YPMediaPhoto {
     public var data: Data?
     
     public init(image: UIImage, exifMeta : [String : Any]? = nil, fromCamera: Bool = false, asset: PHAsset? = nil, data: Data? = nil) {
-    public init(image: UIImage, exifMeta: [String: Any]? = nil, fromCamera: Bool = false, asset: PHAsset? = nil) {
         self.originalImage = image
         self.modifiedImage = nil
         self.fromCamera = fromCamera
